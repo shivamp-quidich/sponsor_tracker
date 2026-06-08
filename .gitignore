@@ -1,0 +1,6 @@
+/build/
+/bin/
+/output/
+/logs/
+*.mp4
+*.csv

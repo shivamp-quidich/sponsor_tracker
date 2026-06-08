@@ -1,0 +1,37 @@
+{
+  "boundary": [
+    [
+      741.976806640625,
+      705.5830078125
+    ],
+    [
+      1105.01220703125,
+      705.5830078125
+    ],
+    [
+      1126.078125,
+      938.7794799804688
+    ],
+    [
+      710.3046875,
+      938.7794799804688
+    ]
+  ],
+  "camera_id": "3",
+  "graphic2_click_ref_relative": [
+    437.59307861328125,
+    -432.3166198730469
+  ],
+  "graphic2_pitch_deg": 5.400000095367432,
+  "graphic2_placed": true,
+  "graphic2_roll_deg": 0.0,
+  "graphic2_scale": 1.0,
+  "graphic2_yaw_deg": 0.0,
+  "graphic_path": "data/overlay.jpg",
+  "graphic_pitch_deg": 0.0,
+  "graphic_roll_deg": 0.0,
+  "graphic_scale": 1.0,
+  "graphic_yaw_deg": 0.0,
+  "session_id": "20260602_074101_476",
+  "timestamp": "20260602_075059_441"
+}

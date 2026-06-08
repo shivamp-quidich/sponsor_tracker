@@ -1,0 +1,26 @@
+sponsor_grid_tracker:
+  enabled: true
+  enable_async_loftr: false
+  enable_reinit_sidecar: true
+  reinit_sidecar_host: 127.0.0.1
+  reinit_sidecar_port: 5557
+  reinit_sidecar_slots: 2
+  reinit_sidecar_timeout_ms: 1200
+  reinit_sidecar_only: true
+  save_debug_frames: false
+  reinit_retry_cooldown_ms: 300
+  auto_reinit_on_camera_return: false
+  enable_grass_mask: false
+  grass_hue_min: 30
+  grass_hue_max: 80
+  grass_sat_min: 40
+  grass_sat_max: 255
+  grass_val_min: 40
+  grass_val_max: 255
+  exp_tracking_mode: 1
+
+standalone:
+  camera_id: "1"
+  auto_align: true
+  auto_place_graphic: true
+  boundary_margin: 0.0
