@@ -20,10 +20,10 @@
         ]
       ],
       "event_tag": "graphic_placement",
-      "image": "assets/sponsor_refs/reference_frame_20260608_170756_569_20260608_170757_132_graphic_placement.jpg",
-      "name": "reference_frame_20260608_170756_569_20260608_170757_132_graphic_placement.jpg",
-      "path": "assets/sponsor_refs/reference_frame_20260608_170756_569_20260608_170757_132_graphic_placement.jpg",
-      "session_id": "20260608_170756_569",
+      "image": "assets/sponsor_refs/reference_frame_20260609_120215_077_20260609_120215_612_graphic_placement.jpg",
+      "name": "reference_frame_20260609_120215_077_20260609_120215_612_graphic_placement.jpg",
+      "path": "assets/sponsor_refs/reference_frame_20260609_120215_077_20260609_120215_612_graphic_placement.jpg",
+      "session_id": "20260609_120215_077",
       "tracking_points": [
         [
           816.5011596679688,
@@ -40,52 +40,9 @@
         [
           816.5011596679688,
           685.7640380859375
-        ]
-      ]
-    },
-    {
-      "boundary": [
-        [
-          1012.9282836914063,
-          471.4013977050781
-        ],
-        [
-          1036.1697998046875,
-          737.0533447265625
-        ],
-        [
-          886.7406005859375,
-          750.126708984375
-        ],
-        [
-          863.4990844726563,
-          484.47479248046875
-        ]
-      ],
-      "event_tag": "graphic_placement",
-      "image": "assets/sponsor_refs/reference_frame_20260608_170756_569_20260608_171202_168_graphic_placement.jpg",
-      "name": "reference_frame_20260608_170756_569_20260608_171202_168_graphic_placement.jpg",
-      "path": "assets/sponsor_refs/reference_frame_20260608_170756_569_20260608_171202_168_graphic_placement.jpg",
-      "session_id": "20260608_170756_569",
-      "tracking_points": [
-        [
-          1012.9282836914063,
-          471.4013977050781
-        ],
-        [
-          1036.1697998046875,
-          737.0533447265625
-        ],
-        [
-          886.7406005859375,
-          750.126708984375
-        ],
-        [
-          863.4990844726563,
-          484.47479248046875
         ]
       ]
     }
   ],
-  "session_id": "20260608_170756_569"
+  "session_id": "20260609_120215_077"
 }
