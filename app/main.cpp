@@ -3,11 +3,11 @@
 #include "frame_utils.h"
 #include "logger.h"
 #include "opengl_context_manager.hpp"
+#include "preview_ui.h"
 
 #include <GL/glew.h>
 #include <GLFW/glfw3.h>
 
-#include <opencv2/highgui.hpp>
 #include <opencv2/imgproc.hpp>
 #include <opencv2/videoio.hpp>
 
@@ -160,10 +160,17 @@ static void compositeWarpedGraphic(cv::Mat& frame, const cv::Mat& graphic,
     const std::vector<cv::Point2f> dst(quad.begin(), quad.end());
     const cv::Mat H = cv::getPerspectiveTransform(src, dst);
     cv::Mat warped;
-    cv::warpPerspective(bgr, warped, H, frame.size(), cv::INTER_LINEAR, cv::BORDER_TRANSPARENT);
+    // BORDER_CONSTANT (not BORDER_TRANSPARENT): fully initialize the output so
+    // pixels outside the warped quad are zero. BORDER_TRANSPARENT leaves them
+    // uninitialized, and the mask below would then key in random memory.
+    cv::warpPerspective(bgr, warped, H, frame.size(), cv::INTER_LINEAR,
+                        cv::BORDER_CONSTANT, cv::Scalar(0, 0, 0));
     cv::Mat mask;
     if (!alpha.empty()) {
-        cv::warpPerspective(alpha, mask, H, frame.size(), cv::INTER_LINEAR, cv::BORDER_CONSTANT);
+        // Derive coverage from the warped alpha channel, clamped to the quad.
+        cv::warpPerspective(alpha, mask, H, frame.size(), cv::INTER_NEAREST,
+                            cv::BORDER_CONSTANT, cv::Scalar(0));
+        cv::threshold(mask, mask, 0, 255, cv::THRESH_BINARY);
     } else {
         cv::cvtColor(warped, mask, cv::COLOR_BGR2GRAY);
         cv::threshold(mask, mask, 1, 255, cv::THRESH_BINARY);
@@ -238,37 +245,7 @@ static cv::Mat drawOverlay(const cv::Mat& frame,
     return out;
 }
 
-static bool nudgeTransform(SponsorGridState::Transform& t, int key)
-{
-    constexpr float pan = 8.f;
-    bool changed = false;
-    switch (key) {
-        case 'i': t.offset_y -= pan; changed = true; break;
-        case 'k': t.offset_y += pan; changed = true; break;
-        case 'j': t.offset_x -= pan; changed = true; break;
-        case 'l': t.offset_x += pan; changed = true; break;
-        case 'u': t.depth_z = std::max(0.1f, t.depth_z - 0.05f); changed = true; break;
-        case 'o': t.depth_z = std::min(2.5f, t.depth_z + 0.05f); changed = true; break;
-        case ',': t.rotation_deg -= 1.f; changed = true; break;
-        case '.': t.rotation_deg += 1.f; changed = true; break;
-        default: break;
-    }
-    return changed;
-}
-
-static cv::Mat fitPreviewFrame(const cv::Mat& frame, int max_w, int max_h)
-{
-    if (frame.empty() || (frame.cols <= max_w && frame.rows <= max_h)) {
-        return frame;
-    }
-    const double scale = std::min(static_cast<double>(max_w) / frame.cols,
-                                  static_cast<double>(max_h) / frame.rows);
-    cv::Mat scaled;
-    cv::resize(frame, scaled, {}, scale, scale, cv::INTER_AREA);
-    return scaled;
-}
-
-static bool initGlfwWindow(GLFWwindow*& window, int width, int height, bool hidden)
+static bool initGlfwWindow(GLFWwindow*& window, int width, int height, bool visible)
 {
     if (!glfwInit()) {
         std::cerr << "Failed to initialize GLFW\n";
@@ -277,11 +254,12 @@ static bool initGlfwWindow(GLFWwindow*& window, int width, int height, bool hidd
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
-    if (hidden) {
+    if (!visible) {
         glfwWindowHint(GLFW_VISIBLE, GLFW_FALSE);
     }
-    window = glfwCreateWindow(std::max(64, width), std::max(64, height),
-                              "Sponsor Tracker", nullptr, nullptr);
+    const int win_w = visible ? std::max(1280, std::min(width, 1600)) : std::max(64, width);
+    const int win_h = visible ? std::max(720, std::min(height, 900)) : std::max(64, height);
+    window = glfwCreateWindow(win_w, win_h, "Sponsor Tracker", nullptr, nullptr);
     if (!window) {
         std::cerr << "Failed to create GLFW window\n";
         glfwTerminate();
@@ -376,19 +354,20 @@ int main(int argc, char** argv)
     const bool show_preview = opts.preview && !opts.headless;
 
     GLFWwindow* window = nullptr;
-    // GLFW window is always hidden; OpenCV shows the operator preview.
-    if (!initGlfwWindow(window, frame_w, frame_h, true)) {
+    if (!initGlfwWindow(window, frame_w, frame_h, show_preview)) {
         std::cerr << "Failed to create OpenGL context."
                   << (opts.headless ? " Try: xvfb-run -a ./scripts/run.sh ..." : "")
                   << "\n";
         return 1;
     }
 
-    const std::string preview_window = "Sponsor Tracker";
+    PreviewUi preview_ui;
+    if (show_preview && !preview_ui.init(window)) {
+        std::cerr << "Failed to initialize ImGui preview\n";
+        return 1;
+    }
     if (show_preview) {
-        cv::namedWindow(preview_window, cv::WINDOW_NORMAL);
-        cv::resizeWindow(preview_window, std::min(frame_w, 1280), std::min(frame_h, 720));
-        std::cout << "Preview window open. Controls shown in the bottom bar.\n";
+        std::cout << "ImGui preview open. Use side panel to rotate/adjust grid while aligning.\n";
     }
 
     SharedState shared_state;
@@ -524,56 +503,127 @@ int main(int argc, char** argv)
         }
 
         if (show_preview) {
-            cv::imshow(preview_window, fitPreviewFrame(display, 1280, 720));
-            int wait_ms = paused ? 50 : frame_delay_ms;
-            const int key = cv::waitKey(wait_ms) & 0xFF;
-            if (key == 'q' || key == 27) {
+            preview_ui.setAligningUi(align_phase == AlignPhase::Aligning
+                                     || results.status == SponsorGridState::TrackingStatus::ALIGNING);
+            PreviewUiActions ui = preview_ui.render(display, results, cfg, frame_id, paused);
+
+            if (ui.quit) {
                 break;
             }
-            if (key == ' ') {
+            if (ui.toggle_pause) {
                 paused = !paused;
             }
-            if (key == 'a') {
+            if (ui.start_align) {
                 cfg = shared_state.getData<SponsorGridState::Config>().value_or(cfg);
                 cfg.start_alignment = true;
                 if (have_boundary) {
                     cfg.transform = transformFromBoundary(boundary, frame_w, frame_h);
                 }
                 cfg.transform_changed = true;
+                preview_ui.syncTransformFromConfig(cfg.transform);
                 shared_state.setData(cfg);
                 align_phase = AlignPhase::Aligning;
                 auto_apply_once = false;
                 placed_graphic = false;
                 pending_place = false;
-                std::cout << "Manual align: use i/j/k/l to move plane, Enter to apply.\n";
             }
-            if (align_phase == AlignPhase::Aligning &&
-                nudgeTransform(cfg.transform, key)) {
-                cfg.transform_changed = true;
-                shared_state.setData(cfg);
-            }
-            if (key == 13 || key == 10) { // Enter
+            if (ui.apply_align) {
                 pending_apply = true;
             }
-            if (key == 'p') {
+            if (ui.place_graphic) {
                 pending_place = true;
                 place_point = {frame_w * 0.5f, frame_h * 0.5f};
             }
-            if (key == 'r') {
+            if (ui.request_reinit) {
                 cfg = shared_state.getData<SponsorGridState::Config>().value_or(cfg);
                 cfg.request_reinit = true;
                 shared_state.setData(cfg);
+            }
+            if (ui.transform_changed) {
+                shared_state.setData(cfg);
+            }
+
+            bool request_quit = false;
+            const int wait_ms = paused ? 50 : frame_delay_ms;
+            const double deadline = glfwGetTime() + wait_ms / 1000.0;
+            while (glfwGetTime() < deadline && !glfwWindowShouldClose(window)) {
+                glfwPollEvents();
+                if (glfwGetKey(window, GLFW_KEY_Q) == GLFW_PRESS
+                    || glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS) {
+                    request_quit = true;
+                    break;
+                }
+                if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS) {
+                    paused = !paused;
+                    break;
+                }
+                if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS) {
+                    cfg = shared_state.getData<SponsorGridState::Config>().value_or(cfg);
+                    cfg.start_alignment = true;
+                    if (have_boundary) {
+                        cfg.transform = transformFromBoundary(boundary, frame_w, frame_h);
+                    }
+                    cfg.transform_changed = true;
+                    preview_ui.syncTransformFromConfig(cfg.transform);
+                    preview_ui.setAligningUi(true);
+                    shared_state.setData(cfg);
+                    align_phase = AlignPhase::Aligning;
+                    auto_apply_once = false;
+                    placed_graphic = false;
+                    pending_place = false;
+                    break;
+                }
+                if (glfwGetKey(window, GLFW_KEY_ENTER) == GLFW_PRESS
+                    || glfwGetKey(window, GLFW_KEY_KP_ENTER) == GLFW_PRESS) {
+                    pending_apply = true;
+                    break;
+                }
+                if (glfwGetKey(window, GLFW_KEY_P) == GLFW_PRESS) {
+                    pending_place = true;
+                    place_point = {frame_w * 0.5f, frame_h * 0.5f};
+                    break;
+                }
+                if (glfwGetKey(window, GLFW_KEY_R) == GLFW_PRESS) {
+                    cfg = shared_state.getData<SponsorGridState::Config>().value_or(cfg);
+                    cfg.request_reinit = true;
+                    shared_state.setData(cfg);
+                    break;
+                }
+                if (align_phase == AlignPhase::Aligning) {
+                    SponsorGridState::Transform t = cfg.transform;
+                    bool nudged = false;
+                    if (glfwGetKey(window, GLFW_KEY_I) == GLFW_PRESS) { t.offset_y -= 8.f; nudged = true; }
+                    if (glfwGetKey(window, GLFW_KEY_K) == GLFW_PRESS) { t.offset_y += 8.f; nudged = true; }
+                    if (glfwGetKey(window, GLFW_KEY_J) == GLFW_PRESS) { t.offset_x -= 8.f; nudged = true; }
+                    if (glfwGetKey(window, GLFW_KEY_L) == GLFW_PRESS) { t.offset_x += 8.f; nudged = true; }
+                    if (glfwGetKey(window, GLFW_KEY_U) == GLFW_PRESS) { t.depth_z = std::max(0.1f, t.depth_z - 0.05f); nudged = true; }
+                    if (glfwGetKey(window, GLFW_KEY_O) == GLFW_PRESS) { t.depth_z = std::min(2.5f, t.depth_z + 0.05f); nudged = true; }
+                    if (glfwGetKey(window, GLFW_KEY_COMMA) == GLFW_PRESS) { t.rotation_deg -= 1.f; nudged = true; }
+                    if (glfwGetKey(window, GLFW_KEY_PERIOD) == GLFW_PRESS) { t.rotation_deg += 1.f; nudged = true; }
+                    if (nudged) {
+                        cfg.transform = t;
+                        cfg.transform_changed = true;
+                        preview_ui.syncTransformFromConfig(t);
+                        shared_state.setData(cfg);
+                        break;
+                    }
+                }
+            }
+            if (request_quit || glfwWindowShouldClose(window)) {
+                break;
             }
         }
 
         if (!paused) {
             ++frame_id;
         }
-        glfwPollEvents();
+        if (!show_preview) {
+            glfwPollEvents();
+        }
     }
 
     if (show_preview) {
-        cv::destroyWindow(preview_window);
+        preview_ui.shutdown();
     }
 
     SponsorGridTracker::requestSponsorGridLoFTRShutdown();

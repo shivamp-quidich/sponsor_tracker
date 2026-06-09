@@ -20,10 +20,10 @@
         ]
       ],
       "event_tag": "graphic_placement",
-      "image": "assets/sponsor_refs/reference_frame_20260609_120215_077_20260609_120215_612_graphic_placement.jpg",
-      "name": "reference_frame_20260609_120215_077_20260609_120215_612_graphic_placement.jpg",
-      "path": "assets/sponsor_refs/reference_frame_20260609_120215_077_20260609_120215_612_graphic_placement.jpg",
-      "session_id": "20260609_120215_077",
+      "image": "assets/sponsor_refs/reference_frame_20260609_134343_170_20260609_134343_690_graphic_placement.jpg",
+      "name": "reference_frame_20260609_134343_170_20260609_134343_690_graphic_placement.jpg",
+      "path": "assets/sponsor_refs/reference_frame_20260609_134343_170_20260609_134343_690_graphic_placement.jpg",
+      "session_id": "20260609_134343_170",
       "tracking_points": [
         [
           816.5011596679688,
@@ -42,7 +42,136 @@
           685.7640380859375
         ]
       ]
+    },
+    {
+      "boundary": [
+        [
+          822.9745483398438,
+          580.171875
+        ],
+        [
+          1072.872802734375,
+          577.7670288085938
+        ],
+        [
+          1094.092041015625,
+          645.5516357421875
+        ],
+        [
+          808.39794921875,
+          648.6951904296875
+        ]
+      ],
+      "event_tag": "graphic_placement",
+      "image": "assets/sponsor_refs/reference_frame_20260609_134343_170_20260609_134403_293_graphic_placement.jpg",
+      "name": "reference_frame_20260609_134343_170_20260609_134403_293_graphic_placement.jpg",
+      "path": "assets/sponsor_refs/reference_frame_20260609_134343_170_20260609_134403_293_graphic_placement.jpg",
+      "session_id": "20260609_134343_170",
+      "tracking_points": [
+        [
+          822.9745483398438,
+          580.171875
+        ],
+        [
+          1072.872802734375,
+          577.7670288085938
+        ],
+        [
+          1094.092041015625,
+          645.5516357421875
+        ],
+        [
+          808.39794921875,
+          648.6951904296875
+        ]
+      ]
+    },
+    {
+      "boundary": [
+        [
+          816.5011596679688,
+          535.7640380859375
+        ],
+        [
+          1083.1678466796875,
+          535.7640380859375
+        ],
+        [
+          1083.1678466796875,
+          685.7640380859375
+        ],
+        [
+          816.5011596679688,
+          685.7640380859375
+        ]
+      ],
+      "event_tag": "graphic_placement",
+      "image": "assets/sponsor_refs/reference_frame_20260609_134343_170_20260609_134407_347_graphic_placement.jpg",
+      "name": "reference_frame_20260609_134343_170_20260609_134407_347_graphic_placement.jpg",
+      "path": "assets/sponsor_refs/reference_frame_20260609_134343_170_20260609_134407_347_graphic_placement.jpg",
+      "session_id": "20260609_134343_170",
+      "tracking_points": [
+        [
+          816.5011596679688,
+          535.7640380859375
+        ],
+        [
+          1083.1678466796875,
+          535.7640380859375
+        ],
+        [
+          1083.1678466796875,
+          685.7640380859375
+        ],
+        [
+          816.5011596679688,
+          685.7640380859375
+        ]
+      ]
+    },
+    {
+      "boundary": [
+        [
+          886.7783813476563,
+          471.38433837890625
+        ],
+        [
+          1101.692626953125,
+          629.2545166015625
+        ],
+        [
+          1012.890625,
+          750.1437377929688
+        ],
+        [
+          797.9763793945313,
+          592.2736206054688
+        ]
+      ],
+      "event_tag": "graphic_placement",
+      "image": "assets/sponsor_refs/reference_frame_20260609_134343_170_20260609_134415_303_graphic_placement.jpg",
+      "name": "reference_frame_20260609_134343_170_20260609_134415_303_graphic_placement.jpg",
+      "path": "assets/sponsor_refs/reference_frame_20260609_134343_170_20260609_134415_303_graphic_placement.jpg",
+      "session_id": "20260609_134343_170",
+      "tracking_points": [
+        [
+          886.7783813476563,
+          471.38433837890625
+        ],
+        [
+          1101.692626953125,
+          629.2545166015625
+        ],
+        [
+          1012.890625,
+          750.1437377929688
+        ],
+        [
+          797.9763793945313,
+          592.2736206054688
+        ]
+      ]
     }
   ],
-  "session_id": "20260609_120215_077"
+  "session_id": "20260609_134343_170"
 }

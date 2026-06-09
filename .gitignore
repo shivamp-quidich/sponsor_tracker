@@ -2,5 +2,8 @@
 /bin/
 /output/
 /logs/
+/modules/
+assets/*.txt
+assets/*.jpg
 *.mp4
 *.csv
