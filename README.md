@@ -33,10 +33,11 @@ The standalone app **recompiles** `SponsorGridTracker.cpp` against your local Op
 
 ```bash
 ./scripts/run.sh --video /path/to/match.mp4 \
-  --graphic data/sponsor.png \
   --boundary assets/sponsor_refs/cam_1/reference_boundary.txt \
   --auto-align --auto-place
 ```
+
+Put sponsor PNG/JPG files in `data/` and select one from the preview side panel.
 
 ### CLI options
 
@@ -44,7 +45,6 @@ The standalone app **recompiles** `SponsorGridTracker.cpp` against your local Op
 |------|-------------|
 | `--video` | Input video (required) |
 | `--config` | YAML config (default: `config/config.yaml`) |
-| `--graphic` | Sponsor image path |
 | `--boundary` | 4-point boundary file (TL TR BR BL) |
 | `--camera-id` | Camera id for `assets/sponsor_refs/cam_<id>/` |
 | `--output` | Export directory (default: `output/`) |
@@ -57,7 +57,7 @@ The standalone app **recompiles** `SponsorGridTracker.cpp` against your local Op
 
 - `a` — start alignment
 - `Enter` — apply alignment (start tracking)
-- `p` — place graphic at frame center
+- `p` — arm graphic placement (then right-click on video)
 - `r` — request manual reinit
 - `q` / `Esc` — quit
 

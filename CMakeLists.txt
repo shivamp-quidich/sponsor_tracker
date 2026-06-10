@@ -49,6 +49,20 @@ find_package(PkgConfig REQUIRED)
 # Match the Python version StiQy was built against (3.12).
 set(Python_EXECUTABLE "/usr/bin/python3.12" CACHE FILEPATH "Python interpreter" FORCE)
 find_package(Python 3.12 EXACT COMPONENTS Interpreter Development REQUIRED)
+
+# Miniconda/conda fmt (v12) breaks system spdlog headers; prefer distro packages.
+foreach(_pkg IN ITEMS fmt yaml-cpp)
+    if(${_pkg}_DIR AND ${_pkg}_DIR MATCHES "conda|miniconda")
+        unset(${_pkg}_DIR CACHE)
+    endif()
+endforeach()
+if(NOT fmt_DIR AND EXISTS "/usr/lib/x86_64-linux-gnu/cmake/fmt/fmt-config.cmake")
+    set(fmt_DIR "/usr/lib/x86_64-linux-gnu/cmake/fmt" CACHE PATH "System fmt for spdlog")
+endif()
+if(NOT yaml-cpp_DIR AND EXISTS "/usr/lib/x86_64-linux-gnu/cmake/yaml-cpp/yaml-cpp-config.cmake")
+    set(yaml-cpp_DIR "/usr/lib/x86_64-linux-gnu/cmake/yaml-cpp" CACHE PATH "System yaml-cpp")
+endif()
+
 find_package(spdlog REQUIRED)
 find_package(yaml-cpp REQUIRED)
 pkg_search_module(GLEW REQUIRED glew)

@@ -30,7 +30,9 @@ cmake "${ROOT}" \
   -DCUDA_TOOLKIT_ROOT_DIR="${CUDA_ROOT}" \
   -DCMAKE_CXX_COMPILER=/usr/bin/g++-12 \
   -DCMAKE_C_COMPILER=/usr/bin/gcc-12 \
-  -DPython_EXECUTABLE=/usr/bin/python3.12
+  -DPython_EXECUTABLE=/usr/bin/python3.12 \
+  -Dfmt_DIR=/usr/lib/x86_64-linux-gnu/cmake/fmt \
+  -Dyaml-cpp_DIR=/usr/lib/x86_64-linux-gnu/cmake/yaml-cpp
 
 cmake --build . -j"$(nproc)"
 echo "Built: ${ROOT}/bin/sponsor_tracker"

@@ -27,7 +27,6 @@ namespace fs = std::filesystem;
 struct CliOptions {
     std::string video_path;
     std::string config_path = "config/config.yaml";
-    std::string graphic_path;
     std::string boundary_path;
     std::string output_dir = "output";
     std::string camera_id;
@@ -44,7 +43,6 @@ static void printUsage(const char* prog)
         << "Usage: " << prog << " --video <path> [options]\n"
         << "Options:\n"
         << "  --config <yaml>       Config file (default: config/config.yaml)\n"
-        << "  --graphic <image>     Sponsor graphic PNG/JPG\n"
         << "  --boundary <file>     4-point boundary (x y per line, TL TR BR BL)\n"
         << "  --camera-id <id>      Camera id for ref bank (default from config)\n"
         << "  --output <dir>        Output directory for export (default: output)\n"
@@ -55,7 +53,7 @@ static void printUsage(const char* prog)
         << "  --max-frames <n>      Stop after N frames (-1 = all)\n"
         << "\nPreview keys:\n"
         << "  a = start manual align   Enter = apply align   i/j/k/l = nudge grid\n"
-        << "  u/o = depth   ,/. = rotate   p = place graphic   r = reinit   q = quit\n";
+        << "  u/o = depth   ,/. = rotate   p = arm place   right-click = position   r = reinit   q = quit\n";
 }
 
 static bool parseArgs(int argc, char** argv, CliOptions& opts)
@@ -73,8 +71,6 @@ static bool parseArgs(int argc, char** argv, CliOptions& opts)
             opts.video_path = need("--video");
         } else if (arg == "--config") {
             opts.config_path = need("--config");
-        } else if (arg == "--graphic") {
-            opts.graphic_path = need("--graphic");
         } else if (arg == "--boundary") {
             opts.boundary_path = need("--boundary");
         } else if (arg == "--camera-id") {
@@ -119,9 +115,28 @@ static void applySmartDefaults(CliOptions& opts)
         opts.auto_align = true;
         std::cout << "Note: --boundary provided → enabling --auto-align\n";
     }
-    if (!opts.graphic_path.empty() && opts.auto_align && !opts.auto_place) {
-        opts.auto_place = true;
-        std::cout << "Note: --graphic + boundary → enabling --auto-place\n";
+}
+
+static void updateGraphicPreview(const std::string& path,
+                                 const std::array<cv::Point2f, 4>* boundary,
+                                 cv::Mat& graphic_preview,
+                                 float& graphic_place_w,
+                                 float& graphic_place_h)
+{
+    graphic_preview.release();
+    if (path.empty()) {
+        return;
+    }
+    graphic_preview = cv::imread(path, cv::IMREAD_UNCHANGED);
+    if (graphic_preview.empty()) {
+        std::cerr << "Warning: could not load graphic " << path << "\n";
+        return;
+    }
+    if (boundary) {
+        graphic_place_w = std::max(50.f, static_cast<float>(cv::norm((*boundary)[1] - (*boundary)[0])) * 0.85f);
+        const float aspect = static_cast<float>(graphic_preview.rows) /
+                             std::max(1, graphic_preview.cols);
+        graphic_place_h = std::max(30.f, graphic_place_w * aspect);
     }
 }
 
@@ -176,6 +191,26 @@ static void compositeWarpedGraphic(cv::Mat& frame, const cv::Mat& graphic,
         cv::threshold(mask, mask, 1, 255, cv::THRESH_BINARY);
     }
     warped.copyTo(frame, mask);
+}
+
+static cv::Point2f quadCenter(const std::array<cv::Point2f, 4>& quad)
+{
+    cv::Point2f center{0.f, 0.f};
+    for (const auto& p : quad) {
+        center += p;
+    }
+    return center * 0.25f;
+}
+
+static std::array<cv::Point2f, 4> scaleQuadAboutCenter(
+    const std::array<cv::Point2f, 4>& quad, float scale)
+{
+    const cv::Point2f center = quadCenter(quad);
+    std::array<cv::Point2f, 4> out{};
+    for (size_t i = 0; i < 4; ++i) {
+        out[i] = center + (quad[static_cast<size_t>(i)] - center) * scale;
+    }
+    return out;
 }
 
 static void drawQuadOutline(cv::Mat& out, const std::array<cv::Point2f, 4>& quad,
@@ -237,7 +272,7 @@ static cv::Mat drawOverlay(const cv::Mat& frame,
 
     const char* help = aligning
         ? "ALIGN: i/j/k/l=move  u/o=depth  ,/.=rotate  Enter=apply  q=quit"
-        : "Space=pause  a=align  Enter=apply  p=place  r=reinit  q=quit";
+        : "Space=pause  a=align  Enter=apply  p=arm place  right-click=position  r=reinit  q=quit";
     cv::putText(out, help, {12, out.rows - 12}, cv::FONT_HERSHEY_SIMPLEX, 0.5,
                 cv::Scalar(0, 0, 0), 2, cv::LINE_AA);
     cv::putText(out, help, {12, out.rows - 12}, cv::FONT_HERSHEY_SIMPLEX, 0.5,
@@ -316,10 +351,6 @@ int main(int argc, char** argv)
     }
 
     app_cfg.sponsor.active_camera_id = app_cfg.camera_id;
-    if (!opts.graphic_path.empty()) {
-        app_cfg.sponsor.graphic_path = opts.graphic_path;
-        app_cfg.sponsor.graphic_changed = true;
-    }
 
     std::array<cv::Point2f, 4> boundary{};
     const bool have_boundary = !opts.boundary_path.empty() &&
@@ -328,17 +359,6 @@ int main(int argc, char** argv)
     cv::Mat graphic_preview;
     float graphic_place_w = 300.f;
     float graphic_place_h = 200.f;
-    if (!opts.graphic_path.empty()) {
-        graphic_preview = cv::imread(opts.graphic_path, cv::IMREAD_UNCHANGED);
-        if (graphic_preview.empty()) {
-            std::cerr << "Warning: could not load --graphic " << opts.graphic_path << "\n";
-        } else if (have_boundary) {
-            graphic_place_w = std::max(50.f, static_cast<float>(cv::norm(boundary[1] - boundary[0])) * 0.85f);
-            const float aspect = static_cast<float>(graphic_preview.rows) /
-                                 std::max(1, graphic_preview.cols);
-            graphic_place_h = std::max(30.f, graphic_place_w * aspect);
-        }
-    }
 
     cv::VideoCapture cap(opts.video_path);
     if (!cap.isOpened()) {
@@ -367,7 +387,8 @@ int main(int argc, char** argv)
         return 1;
     }
     if (show_preview) {
-        std::cout << "ImGui preview open. Use side panel to rotate/adjust grid while aligning.\n";
+        std::cout << "ImGui preview open. Pick a sponsor image in the side panel (data/ folder).\n";
+        preview_ui.syncGraphicSettingsFromConfig(app_cfg.sponsor);
     }
 
     SharedState shared_state;
@@ -397,6 +418,10 @@ int main(int argc, char** argv)
     bool pending_apply = false;
     bool pending_place = false;
     cv::Point2f place_point{frame_w * 0.5f, frame_h * 0.5f};
+    std::array<cv::Point2f, 4> preview_graphic_quad_{};
+    bool have_preview_graphic_quad_ = false;
+    float preview_graphic_scale_ = 1.f;
+    cv::Point2f last_tracker_quad_center_{0.f, 0.f};
 
     if (have_boundary && app_cfg.auto_align) {
         app_cfg.sponsor.transform = transformFromBoundary(boundary, frame_w, frame_h);
@@ -445,11 +470,12 @@ int main(int argc, char** argv)
         }
 
         if (pending_place || (app_cfg.auto_place_graphic && align_phase == AlignPhase::Applied && !placed_graphic)) {
+            cfg.graphic_transform_changed = true;
             cfg.place_graphic = true;
             cfg.placement_point = place_point;
             cfg.placement_request_id++;
-            cfg.graphic_width = graphic_place_w;
-            cfg.graphic_height = graphic_place_h;
+            cfg.graphic_width = graphic_place_w * cfg.graphic_scale;
+            cfg.graphic_height = graphic_place_h * cfg.graphic_scale;
             placed_graphic = true;
             pending_place = false;
         }
@@ -473,6 +499,26 @@ int main(int argc, char** argv)
             writeCsvRow(csv, frame_id, quad);
         }
 
+        std::array<cv::Point2f, 4> draw_quad = quad;
+        if (have_quad) {
+            const cv::Point2f tracker_center = quadCenter(quad);
+            if (!have_preview_graphic_quad_) {
+                preview_graphic_quad_ = quad;
+                preview_graphic_scale_ = cfg.graphic_scale;
+                last_tracker_quad_center_ = tracker_center;
+                have_preview_graphic_quad_ = true;
+            } else if (paused) {
+                draw_quad = preview_graphic_quad_;
+            } else {
+                const cv::Point2f delta = tracker_center - last_tracker_quad_center_;
+                for (auto& p : preview_graphic_quad_) {
+                    p += delta;
+                }
+                last_tracker_quad_center_ = tracker_center;
+                draw_quad = preview_graphic_quad_;
+            }
+        }
+
         const std::array<cv::Point2f, 4> align_quad =
             alignmentQuadFromTransform(cfg.transform, frame_w, frame_h);
         const cv::Mat* gfx_for_draw =
@@ -486,7 +532,7 @@ int main(int argc, char** argv)
                 : nullptr;
         cv::Mat display = drawOverlay(
             bgr, results,
-            (gfx_for_draw && have_quad) ? &quad : nullptr,
+            (gfx_for_draw && have_quad) ? &draw_quad : nullptr,
             gfx_for_draw,
             (results.status == SponsorGridState::TrackingStatus::ALIGNING) ? &align_quad : nullptr,
             ref_boundary_ptr,
@@ -506,12 +552,19 @@ int main(int argc, char** argv)
             preview_ui.setAligningUi(align_phase == AlignPhase::Aligning
                                      || results.status == SponsorGridState::TrackingStatus::ALIGNING);
             PreviewUiActions ui = preview_ui.render(display, results, cfg, frame_id, paused);
+            bool redo_preview = false;
 
             if (ui.quit) {
                 break;
             }
             if (ui.toggle_pause) {
+                const bool was_paused = paused;
                 paused = !paused;
+                if (was_paused && !paused) {
+                    cfg = shared_state.getData<SponsorGridState::Config>().value_or(cfg);
+                    cfg.graphic_transform_changed = true;
+                    shared_state.setData(cfg);
+                }
             }
             if (ui.start_align) {
                 cfg = shared_state.getData<SponsorGridState::Config>().value_or(cfg);
@@ -526,13 +579,39 @@ int main(int argc, char** argv)
                 auto_apply_once = false;
                 placed_graphic = false;
                 pending_place = false;
+                have_preview_graphic_quad_ = false;
             }
             if (ui.apply_align) {
                 pending_apply = true;
             }
-            if (ui.place_graphic) {
+            if (ui.place_graphic_at) {
+                place_point = ui.placement_point;
                 pending_place = true;
-                place_point = {frame_w * 0.5f, frame_h * 0.5f};
+                have_preview_graphic_quad_ = false;
+            }
+            if (ui.graphic_changed) {
+                shared_state.setData(cfg);
+                updateGraphicPreview(cfg.graphic_path,
+                                     have_boundary ? &boundary : nullptr,
+                                     graphic_preview,
+                                     graphic_place_w,
+                                     graphic_place_h);
+                placed_graphic = false;
+                pending_place = false;
+                have_preview_graphic_quad_ = false;
+            }
+            if (ui.graphic_transform_changed) {
+                shared_state.setData(cfg);
+                if (have_preview_graphic_quad_) {
+                    const float ratio =
+                        cfg.graphic_scale / std::max(preview_graphic_scale_, 0.01f);
+                    if (std::abs(ratio - 1.f) > 1e-4f) {
+                        preview_graphic_quad_ =
+                            scaleQuadAboutCenter(preview_graphic_quad_, ratio);
+                        preview_graphic_scale_ = cfg.graphic_scale;
+                        redo_preview = true;
+                    }
+                }
             }
             if (ui.request_reinit) {
                 cfg = shared_state.getData<SponsorGridState::Config>().value_or(cfg);
@@ -541,6 +620,18 @@ int main(int argc, char** argv)
             }
             if (ui.transform_changed) {
                 shared_state.setData(cfg);
+            }
+
+            if (redo_preview && have_preview_graphic_quad_) {
+                display = drawOverlay(
+                    bgr, results,
+                    (gfx_for_draw && have_quad) ? &preview_graphic_quad_ : nullptr,
+                    gfx_for_draw,
+                    (results.status == SponsorGridState::TrackingStatus::ALIGNING) ? &align_quad
+                                                                                     : nullptr,
+                    ref_boundary_ptr,
+                    frame_id, paused);
+                preview_ui.render(display, results, cfg, frame_id, paused);
             }
 
             bool request_quit = false;
@@ -571,6 +662,7 @@ int main(int argc, char** argv)
                     auto_apply_once = false;
                     placed_graphic = false;
                     pending_place = false;
+                    have_preview_graphic_quad_ = false;
                     break;
                 }
                 if (glfwGetKey(window, GLFW_KEY_ENTER) == GLFW_PRESS
@@ -579,8 +671,7 @@ int main(int argc, char** argv)
                     break;
                 }
                 if (glfwGetKey(window, GLFW_KEY_P) == GLFW_PRESS) {
-                    pending_place = true;
-                    place_point = {frame_w * 0.5f, frame_h * 0.5f};
+                    preview_ui.armGraphicPlacement();
                     break;
                 }
                 if (glfwGetKey(window, GLFW_KEY_R) == GLFW_PRESS) {

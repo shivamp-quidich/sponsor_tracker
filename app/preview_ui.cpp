@@ -9,6 +9,9 @@
 
 #include <algorithm>
 #include <cmath>
+#include <filesystem>
+#include <string>
+#include <vector>
 
 namespace {
 
@@ -68,9 +71,61 @@ void PreviewUi::syncTransformFromConfig(const SponsorGridState::Transform& trans
     ui_transform_ = transform;
 }
 
+int PreviewUi::graphicIndexForPath(const std::string& path) const
+{
+    if (path.empty()) {
+        return -1;
+    }
+    for (size_t i = 0; i < available_graphics_.size(); ++i) {
+        if (available_graphics_[i] == path) {
+            return static_cast<int>(i);
+        }
+    }
+    return -1;
+}
+
+void PreviewUi::syncGraphicSettingsFromConfig(const SponsorGridState::Config& cfg)
+{
+    refreshAvailableGraphics();
+    selected_graphic_index_ = graphicIndexForPath(cfg.graphic_path);
+    graphic_scale_ = cfg.graphic_scale;
+    graphic_rotation_ = cfg.graphic_rotation;
+    graphic_yaw_deg_ = cfg.graphic_yaw_deg;
+    graphic_pitch_deg_ = cfg.graphic_pitch_deg;
+    graphic_roll_deg_ = cfg.graphic_roll_deg;
+    graphic_opacity_ = cfg.graphic_opacity;
+}
+
+void PreviewUi::refreshAvailableGraphics()
+{
+    available_graphics_.clear();
+    namespace fs = std::filesystem;
+    try {
+        for (const auto& entry : fs::directory_iterator("data/")) {
+            if (!entry.is_regular_file()) {
+                continue;
+            }
+            std::string ext = entry.path().extension().string();
+            std::transform(ext.begin(), ext.end(), ext.begin(),
+                           [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+            if (ext == ".png" || ext == ".jpg" || ext == ".jpeg" || ext == ".bmp") {
+                available_graphics_.push_back(entry.path().string());
+            }
+        }
+        std::sort(available_graphics_.begin(), available_graphics_.end());
+    } catch (const std::exception&) {
+        // data/ may not exist yet
+    }
+}
+
 void PreviewUi::setAligningUi(bool aligning)
 {
     aligning_ui_ = aligning;
+}
+
+void PreviewUi::armGraphicPlacement()
+{
+    placement_armed_ = true;
 }
 
 void PreviewUi::uploadFrameTexture(const cv::Mat& bgr)
@@ -113,11 +168,9 @@ static void drawVideoOverlays(const SponsorGridState::Results& results,
                               float scale_y)
 {
     ImDrawList* draw = ImGui::GetWindowDrawList();
-    const float inv_sx = (scale_x > 1e-6f) ? (1.f / scale_x) : 1.f;
-    const float inv_sy = (scale_y > 1e-6f) ? (1.f / scale_y) : 1.f;
 
     auto toScreen = [&](const cv::Point2f& p) {
-        return ImVec2(image_pos.x + p.x * inv_sx, image_pos.y + p.y * inv_sy);
+        return ImVec2(image_pos.x + p.x * scale_x, image_pos.y + p.y * scale_y);
     };
 
     if (results.status == SponsorGridState::TrackingStatus::ALIGNING) {
@@ -194,6 +247,103 @@ bool PreviewUi::drawAlignmentPanel(SponsorGridState::Config& cfg, float panel_wi
     return transform_changed;
 }
 
+bool PreviewUi::drawGraphicTransformPanel(SponsorGridState::Config& cfg, float panel_width)
+{
+    bool graphic_transform_changed = false;
+    const float w = std::max(120.f, panel_width - 16.f);
+
+    ImGui::SetNextItemWidth(w);
+    if (ImGui::SliderFloat("##gfx_scale", &graphic_scale_, 0.1f, 5.f, "Scale: %.2fx")) {
+        graphic_transform_changed = true;
+    }
+    ImGui::SetNextItemWidth(w);
+    if (ImGui::SliderFloat("##gfx_pitch", &graphic_pitch_deg_, -180.f, 180.f, "Pitch: %.1f deg")) {
+        graphic_transform_changed = true;
+    }
+    ImGui::SetNextItemWidth(w);
+    if (ImGui::SliderFloat("##gfx_yaw", &graphic_yaw_deg_, -180.f, 180.f, "Yaw: %.1f deg")) {
+        graphic_transform_changed = true;
+    }
+    ImGui::SetNextItemWidth(w);
+    if (ImGui::SliderFloat("##gfx_roll", &graphic_roll_deg_, -180.f, 180.f, "Roll: %.1f deg")) {
+        graphic_transform_changed = true;
+    }
+    ImGui::SetNextItemWidth(w);
+    if (ImGui::SliderFloat("##gfx_opacity", &graphic_opacity_, 0.f, 1.f, "Opacity: %.2f")) {
+        graphic_transform_changed = true;
+    }
+
+    if (ImGui::Button("Reset Transform", ImVec2(w, 0.f))) {
+        graphic_scale_ = 1.f;
+        graphic_rotation_ = 0.f;
+        graphic_yaw_deg_ = 0.f;
+        graphic_pitch_deg_ = 0.f;
+        graphic_roll_deg_ = 0.f;
+        graphic_opacity_ = 1.f;
+        graphic_transform_changed = true;
+    }
+
+    if (graphic_transform_changed) {
+        cfg.graphic_scale = graphic_scale_;
+        cfg.graphic_rotation = graphic_rotation_;
+        cfg.graphic_yaw_deg = graphic_yaw_deg_;
+        cfg.graphic_pitch_deg = graphic_pitch_deg_;
+        cfg.graphic_roll_deg = graphic_roll_deg_;
+        cfg.graphic_opacity = graphic_opacity_;
+        cfg.graphic_transform_changed = true;
+    }
+
+    return graphic_transform_changed;
+}
+
+bool PreviewUi::drawGraphicPanel(SponsorGridState::Config& cfg, float panel_width)
+{
+    bool graphic_changed = false;
+    const float w = std::max(120.f, panel_width - 16.f);
+
+    if (available_graphics_.empty()) {
+        refreshAvailableGraphics();
+    }
+
+    std::string preview = "Select image...";
+    if (selected_graphic_index_ >= 0
+        && selected_graphic_index_ < static_cast<int>(available_graphics_.size())) {
+        preview = std::filesystem::path(available_graphics_[static_cast<size_t>(selected_graphic_index_)])
+                      .filename()
+                      .string();
+    } else if (!cfg.graphic_path.empty()) {
+        preview = std::filesystem::path(cfg.graphic_path).filename().string();
+    }
+
+    ImGui::SetNextItemWidth(w - 36.f);
+    if (ImGui::BeginCombo("##img_select", preview.c_str())) {
+        for (int i = 0; i < static_cast<int>(available_graphics_.size()); ++i) {
+            const std::string filename =
+                std::filesystem::path(available_graphics_[static_cast<size_t>(i)]).filename().string();
+            if (ImGui::Selectable(filename.c_str(), selected_graphic_index_ == i)) {
+                selected_graphic_index_ = i;
+                cfg.graphic_path = available_graphics_[static_cast<size_t>(i)];
+                cfg.graphic_changed = true;
+                graphic_changed = true;
+            }
+        }
+        ImGui::EndCombo();
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("R##gfx_refresh", ImVec2(28.f, 0.f))) {
+        refreshAvailableGraphics();
+    }
+    if (ImGui::IsItemHovered()) {
+        ImGui::SetTooltip("Refresh image list");
+    }
+
+    if (available_graphics_.empty()) {
+        ImGui::TextWrapped("Put PNG/JPG images in data/");
+    }
+
+    return graphic_changed;
+}
+
 PreviewUiActions PreviewUi::render(const cv::Mat& display_bgr,
                                    const SponsorGridState::Results& results,
                                    SponsorGridState::Config& cfg,
@@ -242,7 +392,11 @@ PreviewUiActions PreviewUi::render(const cv::Mat& display_bgr,
     }
 
     if (ImGui::Button("Place Graphic", ImVec2(-1, 0))) {
-        actions.place_graphic = true;
+        placement_armed_ = true;
+    }
+    if (placement_armed_) {
+        ImGui::TextColored(ImVec4(0.4f, 1.f, 0.5f, 1.f),
+                           "Right-click on video to place graphic");
     }
     if (ImGui::Button("Reinit", ImVec2(-1, 0))) {
         actions.request_reinit = true;
@@ -257,8 +411,26 @@ PreviewUiActions PreviewUi::render(const cv::Mat& display_bgr,
         }
     }
 
+    const bool has_graphic = selected_graphic_index_ >= 0 || !cfg.graphic_path.empty();
+    const bool is_tracking = results.status == SponsorGridState::TrackingStatus::TRACKING;
+    if (is_tracking || has_graphic || placement_armed_) {
+        if (ImGui::CollapsingHeader("Graphic Transform", ImGuiTreeNodeFlags_DefaultOpen)) {
+            if (drawGraphicTransformPanel(cfg, kSidePanelWidth)) {
+                actions.graphic_transform_changed = true;
+            }
+        }
+    }
+
     ImGui::Spacing();
-    ImGui::TextWrapped("Keys: Space=pause, a=align, Enter=apply, p=place, r=reinit, q=quit");
+    if (ImGui::CollapsingHeader("Sponsor Image", ImGuiTreeNodeFlags_DefaultOpen)) {
+        if (drawGraphicPanel(cfg, kSidePanelWidth)) {
+            actions.graphic_changed = true;
+        }
+    }
+
+    ImGui::Spacing();
+    ImGui::TextWrapped("Keys: Space=pause, a=align, Enter=apply, p=arm place, "
+                       "right-click=set position, r=reinit, q=quit");
     if (ImGui::Button("Quit", ImVec2(-1, 0))) {
         actions.quit = true;
     }
@@ -286,6 +458,21 @@ PreviewUiActions PreviewUi::render(const cv::Mat& display_bgr,
     const float scale_x = (tex_w_ > 0) ? (image_size.x / static_cast<float>(tex_w_)) : 1.f;
     const float scale_y = (tex_h_ > 0) ? (image_size.y / static_cast<float>(tex_h_)) : 1.f;
     drawVideoOverlays(results, image_pos, scale_x, scale_y);
+
+    if (placement_armed_ && ImGui::IsWindowHovered()
+        && ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
+        const ImVec2 mouse = ImGui::GetMousePos();
+        const float ui_x = mouse.x - image_pos.x;
+        const float ui_y = mouse.y - image_pos.y;
+        if (ui_x >= 0.f && ui_x <= image_size.x && ui_y >= 0.f && ui_y <= image_size.y
+            && tex_w_ > 0 && tex_h_ > 0) {
+            actions.place_graphic_at = true;
+            actions.placement_point = cv::Point2f(
+                ui_x * static_cast<float>(tex_w_) / image_size.x,
+                ui_y * static_cast<float>(tex_h_) / image_size.y);
+            placement_armed_ = false;
+        }
+    }
 
     ImGui::End();
 
